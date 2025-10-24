@@ -11,7 +11,7 @@ optdepends=('scxctl: sched_ext control CLI required at runtime')
 makedepends=('rustup' 'clang' 'lld' 'pkgconf' 'git')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
-source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=main")
+source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=master")
 sha256sums=('SKIP')
 
 _stable_toolchain="stable"
