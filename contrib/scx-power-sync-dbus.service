@@ -2,7 +2,7 @@
 Description=Autostart scx-power-sync-dbus
 
 [Service]
-ExecStart=/usr/bin/scx-power-sync-dbus-nightly
+ExecStart=/usr/bin/scx-power-sync-dbus
 Environment=RUST_LOG=info
 Restart=always
 RestartSec=1

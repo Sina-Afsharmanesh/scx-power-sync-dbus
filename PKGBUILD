@@ -31,7 +31,7 @@ prepare() {
 
   rustup toolchain install "${_toolchain}" --profile minimal --component rust-src
 
-  sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/scx-power-sync-dbus-nightly|' \
+  sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/scx-power-sync-dbus|' \
     "contrib/${_pkgname}.service"
 
   rustup run "${_toolchain}" rustc -V
