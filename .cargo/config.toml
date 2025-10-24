@@ -10,6 +10,10 @@ rustflags = [
     "-Clink-arg=-Wl,--icf=all",            # identical code folding
 
     # Nightly-only (commented for stable):
-    # "-Zdylib-lto",
-    # "-Clto=fat",                           # reinforce profile.lto
+    "-Zdylib-lto",
+    "-Clto=fat",
+    "-Zshare-generics=y",
+    "-Zrelro-level=full",
+    "-Zbuild-std=std",
+    "-Zbuild-std=panic_abort"
 ]

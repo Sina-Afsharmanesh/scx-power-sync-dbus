@@ -1,9 +1,9 @@
 # Maintainer: Sina Afsharmanesh
 _pkgname=scx-power-sync-dbus
-pkgname=${_pkgname}-git
+pkgname=${_pkgname}-toolchain-nightly-git
 pkgver=0.1.0.1.g3db286d
 pkgrel=1
-pkgdesc="Event-driven SCX scheduler binder for power-profiles-daemon (Rust, zbus)"
+pkgdesc="Event-driven SCX scheduler binder for power-profiles-daemon (Rust, zbus, compiled with nightly toolchain)"
 arch=('x86_64')
 url="https://github.com/Sina-Afsharmanesh/${_pkgname}"
 license=('MIT')
@@ -11,11 +11,11 @@ depends=('power-profiles-daemon')
 optdepends=('scxctl: sched_ext control CLI required at runtime')
 makedepends=('rustup' 'clang' 'lld' 'pkgconf' 'git')
 provides=("${_pkgname}")
-conflicts=("${_pkgname}")
+conflicts=("${_pkgname}" "${_pkgname}-git")
 source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=master")
 sha256sums=('SKIP')
 
-_stable_toolchain="stable"
+_toolchain="nightly-2025-10-23"
 
 pkgver() {
   cd "${srcdir}/${_pkgname}"
@@ -28,10 +28,14 @@ pkgver() {
 
 prepare() {
   cd "${srcdir}/${_pkgname}"
-  rustup toolchain install "${_stable_toolchain}" --profile minimal --component rust-src
-  rustup run "${_stable_toolchain}" rustc -V
-  rustup run "${_stable_toolchain}" cargo -V
-  # git submodule update --init --recursive
+
+  rustup toolchain install "${_nightly_toolchain}" --profile minimal --component rust-src
+
+  sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/scx-power-sync-dbus-nightly|' \
+    "contrib/${_pkgname}.service"
+
+  rustup run "${_toolchain}" rustc -V
+  rustup run "${_toolchain}" cargo -V
 }
 
 build() {
@@ -40,7 +44,7 @@ build() {
   local cargo_flags=()
   [[ -f Cargo.lock ]] && cargo_flags+=(--locked)
 
-  RUSTUP_TOOLCHAIN="${_stable_toolchain}" \
+  RUSTUP_TOOLCHAIN="${_toolchain}" \
   cargo build --release "${cargo_flags[@]}"
 }
 
