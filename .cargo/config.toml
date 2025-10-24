@@ -1,0 +1,15 @@
+[target.'cfg(target_os = "linux")']
+linker = "clang"
+
+rustflags = [
+    "-Ctarget-cpu=native",                 # specialize for this CPU
+    "-Cembed-bitcode=yes",                 # enable cross-crate LTO synergy (stable)
+    "-Cllvm-args=--inline-threshold=300",  # encourage inlining (LLVM arg is stable)
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-Wl,--gc-sections",        # drop dead sections
+    "-Clink-arg=-Wl,--icf=all",            # identical code folding
+
+    # Nightly-only (commented for stable):
+    # "-Zdylib-lto",
+    # "-Clto=fat",                           # reinforce profile.lto
+]

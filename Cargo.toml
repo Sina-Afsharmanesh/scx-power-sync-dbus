@@ -1,0 +1,31 @@
+[package]
+name = "scx-power-sync-dbus"
+version = "0.1.0"
+authors = ["Sina Afsharmanesh <s14h@proton.me>"]
+edition = "2024"
+description = "Event-driven SCX scheduler binder for power-profiles-daemon"
+license = "MIT"
+license-file = "LICENSE"
+
+[dependencies]
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }
+zbus = "5.12.0"
+zvariant = "5.8.0"
+which = "8.0.0"
+futures-util = "0.3.31"
+anyhow = "1.0.100"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+incremental = false
+panic = "abort"
+strip = "debuginfo"
+
+[profile.release.build-override]
+opt-level = 0
+codegen-units = 256
+debug = false
