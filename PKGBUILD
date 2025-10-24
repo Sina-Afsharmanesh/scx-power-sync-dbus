@@ -1,6 +1,7 @@
 # Maintainer: Sina Afsharmanesh
 _pkgname=scx-power-sync-dbus
 pkgname=${_pkgname}-git
+pkgver=0.1.0.1.g3db286d
 pkgrel=1
 pkgdesc="Event-driven SCX scheduler binder for power-profiles-daemon (Rust, zbus)"
 arch=('x86_64')
