@@ -12,7 +12,7 @@ optdepends=('scxctl: sched_ext control CLI required at runtime')
 makedepends=('rustup' 'clang' 'lld' 'pkgconf' 'git')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}" "${_pkgname}-git")
-source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=master")
+source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=toolchain-nightly")
 sha256sums=('SKIP')
 
 _toolchain="nightly-2025-10-23"
@@ -29,7 +29,7 @@ pkgver() {
 prepare() {
   cd "${srcdir}/${_pkgname}"
 
-  rustup toolchain install "${_nightly_toolchain}" --profile minimal --component rust-src
+  rustup toolchain install "${_toolchain}" --profile minimal --component rust-src
 
   sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/scx-power-sync-dbus-nightly|' \
     "contrib/${_pkgname}.service"
