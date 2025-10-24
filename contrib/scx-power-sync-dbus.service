@@ -1,13 +1,22 @@
 [Unit]
 Description=Autostart scx-power-sync-dbus
-After=power-profiles-daemon.service dbus.service
-StartLimitIntervalSec=0
 
 [Service]
 ExecStart=/usr/bin/scx-power-sync-dbus
+Environment=RUST_LOG=info
 Restart=always
 RestartSec=1
 Nice=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
 
 [Install]
 WantedBy=default.target

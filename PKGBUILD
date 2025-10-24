@@ -1,40 +1,55 @@
 # Maintainer: Sina Afsharmanesh
-pkgname=scx-power-sync-dbus
-pkgver=0.1.0
-pkgrel=2
+_pkgname=scx-power-sync-dbus
+pkgname=${_pkgname}-git
+pkgrel=1
 pkgdesc="Event-driven SCX scheduler binder for power-profiles-daemon (Rust, zbus)"
 arch=('x86_64')
-#url=""
+url="https://github.com/Sina-Afsharmanesh/${_pkgname}"
 license=('MIT')
-depends=('power-profiles-daemon' 'scxctl')
-makedepends=('rustup' 'cargo' 'clang' 'lld' 'pkgconf' 'git')
-source=("${pkgname}-${pkgver}.tar.gz")
+depends=('power-profiles-daemon')
+optdepends=('scxctl: sched_ext control CLI required at runtime')
+makedepends=('rustup' 'clang' 'lld' 'pkgconf' 'git')
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
+source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=main")
 sha256sums=('SKIP')
 
 _stable_toolchain="stable"
 
-prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+pkgver() {
+  cd "${srcdir}/${_pkgname}"
+  if ver="$(git describe --tags --long 2>/dev/null)"; then
+    printf '%s\n' "${ver#v}" | sed 's/-/./g'
+  else
+    printf 'r%s.%s\n' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  fi
+}
 
+prepare() {
+  cd "${srcdir}/${_pkgname}"
   rustup toolchain install "${_stable_toolchain}" --profile minimal --component rust-src
   rustup run "${_stable_toolchain}" rustc -V
   rustup run "${_stable_toolchain}" cargo -V
+  # git submodule update --init --recursive
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${_pkgname}"
+
+  local cargo_flags=()
+  [[ -f Cargo.lock ]] && cargo_flags+=(--locked)
 
   RUSTUP_TOOLCHAIN="${_stable_toolchain}" \
-  cargo build --release --frozen
+  cargo build --release "${cargo_flags[@]}"
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${_pkgname}"
 
-  install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+  install -Dm755 "target/release/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
 
-  install -Dm644 "contrib/${pkgname}.service" \
-    "${pkgdir}/usr/lib/systemd/user/${pkgname}.service"
+  install -Dm644 "contrib/${_pkgname}.service" \
+    "${pkgdir}/usr/lib/systemd/user/${_pkgname}.service"
 
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
