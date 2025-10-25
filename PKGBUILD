@@ -12,6 +12,7 @@ optdepends=('scxctl: sched_ext control CLI required at runtime')
 makedepends=('rustup' 'clang' 'lld' 'pkgconf' 'git')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}" "${_pkgname}-toolchain-nightly-git")
+backup=('etc/xdg/scx-power-sync-dbus/config.yaml')
 source=("${_pkgname}::git+https://github.com/Sina-Afsharmanesh/${_pkgname}.git#branch=master")
 sha256sums=('SKIP')
 
@@ -55,6 +56,9 @@ package() {
 
   install -Dm644 "contrib/${_pkgname}.service" \
     "${pkgdir}/usr/lib/systemd/user/${_pkgname}.service"
+
+  install -Dm644 "contrib/${_pkgname}.yaml" \
+    "${pkgdir}/etc/xdg/${_pkgname}/config.yaml"
 
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

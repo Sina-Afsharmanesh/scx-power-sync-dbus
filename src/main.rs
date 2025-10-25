@@ -1,23 +1,44 @@
-use std::collections::HashMap;
-use anyhow::{anyhow, Context, Result};
+use anyhow::anyhow;
+use anyhow::{Context, Result};
 use futures_util::StreamExt;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::env;
 use std::ffi::OsString;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::str::FromStr;
 use tracing::{error, info, warn};
 use zbus::fdo::PropertiesProxy;
 use zbus::{Connection, Proxy};
-use zvariant::{Value};
+use zvariant::Value;
 
 const DEST: &str = "net.hadess.PowerProfiles";
 const PATH: &str = "/net/hadess/PowerProfiles";
 const IFACE: &str = "net.hadess.PowerProfiles";
+const CONFIG_DIR_NAME: &str = "scx-power-sync-dbus";
+const CONFIG_FILE_NAME: &str = "config.yaml";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Profile {
     Performance,
     Balanced,
     PowerSaver,
+}
+
+impl Profile {
+    fn as_config_key(self) -> &'static str {
+        match self {
+            Profile::Performance => "performance",
+            Profile::Balanced => "balanced",
+            Profile::PowerSaver => "power-saver",
+        }
+    }
+
+    fn all() -> [Profile; 3] {
+        [Profile::Performance, Profile::Balanced, Profile::PowerSaver]
+    }
 }
 
 impl FromStr for Profile {
@@ -32,34 +53,47 @@ impl FromStr for Profile {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Mode {
-    sched: &'static str,
-    args: &'static str, // kept as a single string; passed as --args=<this>
+    sched: String,
+    args: String, // kept as a single string; passed as --args=<this>
 }
 
-impl From<Profile> for Mode {
-    fn from(p: Profile) -> Self {
-        match p {
-            Profile::Performance => Mode {
-                sched: "flash",
-                args: "-m all -L -C 90 -s 6000 -r 65536",
-            },
-            Profile::Balanced => Mode {
-                sched: "lavd",
-                args: "--autopilot",
-            },
-            Profile::PowerSaver => Mode {
-                sched: "flash",
-                args: "-m powersave -I 8000 -t 5000 -s 8000 -S 500",
-            },
+#[derive(Debug, Deserialize)]
+struct RawConfig {
+    modes: HashMap<String, ModeDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModeDefinition {
+    sched: String,
+    args: String,
+}
+
+impl From<ModeDefinition> for Mode {
+    fn from(def: ModeDefinition) -> Self {
+        Self {
+            sched: def.sched,
+            args: def.args,
         }
+    }
+}
+
+struct Config {
+    modes: HashMap<Profile, Mode>,
+}
+
+impl Config {
+    fn mode_for(&self, profile: Profile) -> Option<&Mode> {
+        self.modes.get(&profile)
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logging();
+
+    let config = load_config().context("load configuration")?;
 
     ensure_bin("scxctl")?;
     ensure_bin("powerprofilesctl")?;
@@ -80,8 +114,16 @@ async fn main() -> Result<()> {
     let mut last = match Profile::from_str(current_raw.as_str()) {
         Ok(p) => {
             info!(profile = ?p, "[startup] ActiveProfile");
-            apply_mode(Mode::from(p))?;
-            Some(p)
+            match config.mode_for(p) {
+                Some(mode) => {
+                    apply_mode(mode)?;
+                    Some(p)
+                }
+                None => {
+                    warn!("no mode configured for profile {:?}", p);
+                    None
+                }
+            }
         }
         Err(e) => {
             warn!("[startup] {e}");
@@ -122,10 +164,15 @@ async fn main() -> Result<()> {
                                 continue;
                             }
                             info!(profile = ?p, "[event] ActiveProfile");
-                            if let Err(e) = apply_mode(Mode::from(p)) {
-                                error!("apply_mode error: {e:#}");
-                            } else {
-                                last = Some(p);
+                            match config.mode_for(p) {
+                                Some(mode) => {
+                                    if let Err(e) = apply_mode(mode) {
+                                        error!("apply_mode error: {e:#}");
+                                    } else {
+                                        last = Some(p);
+                                    }
+                                }
+                                None => warn!("no mode configured for profile {:?}", p),
                             }
                         }
                         Err(e) => warn!("unknown profile in event: {e}"),
@@ -147,8 +194,7 @@ fn init_logging() {
 }
 
 fn ensure_bin(bin: &str) -> Result<()> {
-    which::which(bin)
-        .with_context(|| format!("required binary not found in PATH: {bin}"))?;
+    which::which(bin).with_context(|| format!("required binary not found in PATH: {bin}"))?;
     Ok(())
 }
 
@@ -177,19 +223,19 @@ fn scx_running() -> Result<bool> {
     Ok(!stdout.to_lowercase().contains("no scx scheduler running"))
 }
 
-fn apply_mode(mode: Mode) -> Result<()> {
+fn apply_mode(mode: &Mode) -> Result<()> {
     let running = scx_running().context("probe scx running")?;
     let subcmd = if running { "switch" } else { "start" };
     info!(
         subcmd,
-        sched = mode.sched,
-        args = mode.args,
+        sched = %mode.sched,
+        args = %mode.args,
         "[apply]"
     );
 
     // Keep the entire args payload as *one* argument: --args=".."
     let full = format!("--args={}", mode.args);
-    let out = scxctl([subcmd, "--sched", mode.sched, &full])?;
+    let out = scxctl([subcmd, "--sched", mode.sched.as_str(), &full])?;
 
     let code = out.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_owned();
@@ -208,4 +254,114 @@ fn apply_mode(mode: Mode) -> Result<()> {
         }
         Ok(())
     }
+}
+
+fn load_config() -> Result<Config> {
+    let path = ensure_config_file().context("locate configuration file")?;
+    let contents = fs::read_to_string(&path)
+        .with_context(|| format!("read configuration {}", path.display()))?;
+
+    let raw: RawConfig =
+        serde_yaml::from_str(&contents).with_context(|| format!("parse {}", path.display()))?;
+
+    let mut modes = HashMap::new();
+    for (key, definition) in raw.modes {
+        let profile = Profile::from_str(key.as_str())
+            .with_context(|| format!("unknown profile '{key}' in {}", path.display()))?;
+        if modes.insert(profile, Mode::from(definition)).is_some() {
+            return Err(anyhow!(
+                "duplicate configuration for profile '{}' in {}",
+                profile.as_config_key(),
+                path.display()
+            ));
+        }
+    }
+
+    for profile in Profile::all() {
+        if !modes.contains_key(&profile) {
+            return Err(anyhow!(
+                "configuration {} missing profile '{}'",
+                path.display(),
+                profile.as_config_key()
+            ));
+        }
+    }
+
+    info!(config = %path.display(), "loaded configuration");
+
+    Ok(Config { modes })
+}
+
+fn ensure_config_file() -> Result<PathBuf> {
+    let candidates = config_search_paths();
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    let searched = candidates
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Err(anyhow!(
+        "configuration file not found; looked in: {}",
+        if searched.is_empty() {
+            "<none>".to_string()
+        } else {
+            searched
+        }
+    ))
+}
+
+fn config_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(home) = env::var("HOME") {
+        let home_config = Path::new(&home)
+            .join(".config")
+            .join(CONFIG_DIR_NAME)
+            .join(CONFIG_FILE_NAME);
+        paths.push(home_config);
+    }
+
+    if let Ok(value) = env::var("XDG_CONFIG_HOME") {
+        if !value.is_empty() {
+            let xdg_path = PathBuf::from(&value)
+                .join(CONFIG_DIR_NAME)
+                .join(CONFIG_FILE_NAME);
+            if !paths.contains(&xdg_path) {
+                paths.push(xdg_path);
+            }
+        }
+    }
+
+    if let Ok(raw) = env::var("XDG_CONFIG_DIRS") {
+        for entry in raw.split(':').filter(|s| !s.is_empty()) {
+            let path = PathBuf::from(entry)
+                .join(CONFIG_DIR_NAME)
+                .join(CONFIG_FILE_NAME);
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    } else {
+        let path = PathBuf::from("/etc/xdg")
+            .join(CONFIG_DIR_NAME)
+            .join(CONFIG_FILE_NAME);
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+
+    let fallback = PathBuf::from("/etc")
+        .join(CONFIG_DIR_NAME)
+        .join(CONFIG_FILE_NAME);
+    if !paths.contains(&fallback) {
+        paths.push(fallback);
+    }
+
+    paths
 }
