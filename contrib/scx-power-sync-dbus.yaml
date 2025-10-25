@@ -1,0 +1,10 @@
+modes:
+  performance:
+    sched: flash
+    args: "-m all -L -C 90 -s 6000 -r 65536"
+  balanced:
+    sched: lavd
+    args: "--autopilot"
+  power-saver:
+    sched: flash
+    args: "-m powersave -I 8000 -t 5000 -s 8000 -S 500"
